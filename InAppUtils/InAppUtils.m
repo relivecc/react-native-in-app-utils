@@ -93,24 +93,28 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
                   username:(NSString *)username
                   callback:(RCTResponseSenderBlock)callback
 {
-    SKProduct *product;
-    for(SKProduct *p in products)
-    {
-        if([productIdentifier isEqualToString:p.productIdentifier]) {
-            product = p;
-            break;
+    @try {
+        SKProduct *product;
+        for(SKProduct *p in products)
+        {
+            if([productIdentifier isEqualToString:p.productIdentifier]) {
+                product = p;
+                break;
+            }
         }
-    }
 
-    if(product) {
-        SKMutablePayment *payment = [SKMutablePayment paymentWithProduct:product];
-        if(username) {
-            payment.applicationUsername = username;
+        if(product) {
+            SKMutablePayment *payment = [SKMutablePayment paymentWithProduct:product];
+            if(username) {
+                payment.applicationUsername = username;
+            }
+            [[SKPaymentQueue defaultQueue] addPayment:payment];
+            _callbacks[RCTKeyForInstance(payment.productIdentifier)] = callback;
+        } else {
+            callback(@[@"invalid_product"]);
         }
-        [[SKPaymentQueue defaultQueue] addPayment:payment];
-        _callbacks[RCTKeyForInstance(payment.productIdentifier)] = callback;
-    } else {
-        callback(@[@"invalid_product"]);
+    } @catch (NSException *exception) {
+        callback(@[@"purchase_product_exception"]);
     }
 }
 
