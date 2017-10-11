@@ -116,8 +116,8 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
             if(username) {
                 payment.applicationUsername = username;
             }
-            [[SKPaymentQueue defaultQueue] addPayment:payment];
             _callbacks[RCTKeyForInstance(payment.productIdentifier)] = callback;
+            [[SKPaymentQueue defaultQueue] addPayment:payment];
         } else {
             callback(@[@"invalid_product"]);
         }
