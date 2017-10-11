@@ -13,7 +13,7 @@
 - (instancetype)init
 {
     if ((self = [super init])) {
-        [[SKPaymentQueue defaultQueue] addTransactionObserver:self];
+        hasListeners = NO;
     }
     return self;
 }
@@ -63,61 +63,59 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
 // Will be called when this module's first listener is added.
 -(void)startObserving {
     hasListeners = YES;
-    // Set up any upstream listeners or background tasks as necessary
+    [[SKPaymentQueue defaultQueue] addTransactionObserver:self];
 }
 
 // Will be called when this module's last listener is removed, or on dealloc.
 -(void)stopObserving {
     hasListeners = NO;
-    // Remove upstream listeners, stop unnecessary background tasks
+    [[SKPaymentQueue defaultQueue] removeTransactionObserver:self];
 }
 
 - (void)paymentQueue:(SKPaymentQueue *)queue
  updatedTransactions:(NSArray *)transactions
 {
+    if (!hasListeners) { // Only send events if anyone is listening
+        RCTLogWarn(@"No listener registered for updated transactions.");
+        return;
+    }
+                
     for (SKPaymentTransaction *transaction in transactions) {
         switch (transaction.transactionState) {
             case SKPaymentTransactionStateFailed: {   
-                if (hasListeners) { // Only send events if anyone is listening
-                    switch (transaction.error.code)
-                    {
-                        case SKErrorPaymentCancelled:
-                            [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"canceled", @"transaction": transaction}];
-                            break;
-                        default:
-                            [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": transaction, @"error": RCTJSErrorFromNSError(transaction.error)}];
-                            break;
-                    }
-                } else {
-                    RCTLogWarn(@"No listener registered for transaction with state failed.");
+                switch (transaction.error.code)
+                {
+                    case SKErrorPaymentCancelled:
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"cancelled", @"transaction": transaction}];
+                        break;
+                    default:
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": transaction, @"error": RCTJSErrorFromNSError(transaction.error)}];
+                        break;
                 }
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             }
             case SKPaymentTransactionStatePurchased: {
-                if (hasListeners) { // Only send events if anyone is listening
-                    NSDictionary *purchase = @{
-                                              @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
-                                              @"transactionIdentifier": transaction.transactionIdentifier,
-                                              @"productIdentifier": transaction.payment.productIdentifier,
-                                              @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0]
-                                              };
-                    [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": transaction, @"purchase": purchase}];
-                } else {
-                    RCTLogWarn(@"No listener registered for transaction with state purchased.");
-                }
+                NSDictionary *purchase = @{
+                                            @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
+                                            @"transactionIdentifier": transaction.transactionIdentifier,
+                                            @"productIdentifier": transaction.payment.productIdentifier,
+                                            @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0]
+                                            };
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": transaction, @"purchase": purchase}];
                 // TODO remove finishTransaction here, and create separate method
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             }
-            case SKPaymentTransactionStateRestored: // TODO
+            case SKPaymentTransactionStateRestored:
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"restored", @"transaction": transaction}];
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             case SKPaymentTransactionStatePurchasing:
-                NSLog(@"purchasing");
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"purchasing", @"transaction": transaction}];
                 break;
             case SKPaymentTransactionStateDeferred:
-                NSLog(@"deferred");
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"deferred", @"transaction": transaction}];
                 break;
             default:
                 break;
@@ -132,18 +130,24 @@ RCT_EXPORT_METHOD(finishTransaction:(NSString *)transactionIdentifier)
 }
 
 RCT_EXPORT_METHOD(purchaseProductForUser:(NSString *)productIdentifier
-                  username:(NSString *)username)
+                  username:(NSString *)username
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self doPurchaseProduct:productIdentifier username:username];
+    [self doPurchaseProduct:productIdentifier username:username resolver:resolve rejecter:reject];
 }
 
-RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier)
+RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self doPurchaseProduct:productIdentifier username:nil];
+    [self doPurchaseProduct:productIdentifier username:nil resolver:resolve rejecter:reject];
 }
 
 - (void) doPurchaseProduct:(NSString *)productIdentifier
                   username:(NSString *)username
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject
 {
     @try {
         SKProduct *product;
@@ -161,11 +165,12 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier)
                 payment.applicationUsername = username;
             }
             [[SKPaymentQueue defaultQueue] addPayment:payment];
+            resolve(@[@YES]);
         } else {
-            NSLog(@"invalid_product"); // TODO we lose feedback here, how do we solve this? Send error event?
+            reject(@[@"invalid_product"]);
         }
     } @catch (NSException *exception) {
-        NSLog(@"purchase_product_exception"); // TODO we lose feedback here, how do we solve this? Send error event?
+        reject(@[@"purchase_product_exception"]);
     }
 }
 
@@ -176,7 +181,7 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
         switch (error.code)
         {
             case SKErrorPaymentCancelled:
-                [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"canceled", @"error": RCTJSErrorFromNSError(error)}];
+                [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"cancelled", @"error": RCTJSErrorFromNSError(error)}];
                 break;
             default:
                 [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"error", @"error": RCTJSErrorFromNSError(error)}];
@@ -218,42 +223,69 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
     }
 }
 
-RCT_EXPORT_METHOD(restorePurchases)
+RCT_EXPORT_METHOD(restorePurchases:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
+    if (!hasListeners) { // Only initiate restore if anyone is listening
+        RCTLogWarn(@"No listener registered for restore purchases request.");
+        reject(@[@"No listener registered for restore purchases request."]);
+        return;
+    }
+
     [[SKPaymentQueue defaultQueue] restoreCompletedTransactions];
+    resolve(@[@YES]);
 }
 
-RCT_EXPORT_METHOD(restorePurchasesForUser:(NSString *)username)
+RCT_EXPORT_METHOD(restorePurchasesForUser:(NSString *)username
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
+    if (!hasListeners) { // Only initiate restore if anyone is listening
+        RCTLogWarn(@"No listener registered for restore purchases request.");
+        reject(@[@"No listener registered for restore purchases request."]);
+        return;
+    }
+
     if(!username) {
-        NSLog(@[@"username_required"]); // TODO we lose feedback here, how do we solve this? Send error event?
+        reject(@[@"username_required"]);
         return;
     }
     [[SKPaymentQueue defaultQueue] restoreCompletedTransactionsWithApplicationUsername:username];
+    resolve(@[@YES]);
 }
 
-RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers)
+RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
+    if (!hasListeners) { // Only load products if anyone is listening
+        RCTLogWarn(@"No listener registered for load product request.");
+        reject(@[@"No listener registered for load product request."]);
+        return;
+    }
+
     SKProductsRequest *productsRequest = [[SKProductsRequest alloc]
-                                          initWithProductIdentifiers:[NSSet setWithArray:productIdentifiers]];
+                                        initWithProductIdentifiers:[NSSet setWithArray:productIdentifiers]];
     productsRequest.delegate = self;
     [productsRequest start];
+    resolve(@[@YES]);
 }
 
-RCT_EXPORT_METHOD(canMakePayments: (RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(canMakePayments:(RCTPromiseResolveBlock)resolve)
 {
     BOOL canMakePayments = [SKPaymentQueue canMakePayments];
-    callback(@[@(canMakePayments)]);
+    resolve(@[@(canMakePayments)]);
 }
 
-RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
     NSURL *receiptUrl = [[NSBundle mainBundle] appStoreReceiptURL];
     NSData *receiptData = [NSData dataWithContentsOfURL:receiptUrl];
     if (!receiptData) {
-      callback(@[@"not_available"]);
+      reject(@[@"not_available"]);
     } else {
-      callback(@[[NSNull null], [receiptData base64EncodedStringWithOptions:0]]);
+      resolve(@[receiptData base64EncodedStringWithOptions:0]);
     }
 }
 
@@ -287,11 +319,6 @@ RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
 // SKProductsRequestDelegate network error
 - (void)request:(SKRequest *)request didFailWithError:(NSError *)error{
     [self sendEventWithName:IAPProductsEvent body:@{@"state": @"error", @"error": RCTJSErrorFromNSError(error)}];
-}
-
-- (void)dealloc
-{
-    [[SKPaymentQueue defaultQueue] removeTransactionObserver:self];
 }
 
 @end
