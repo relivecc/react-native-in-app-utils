@@ -40,7 +40,7 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[IAPProductsEvent, IAPTransactionEvent, IAPTransactionEvent];
+  return @[IAPProductsEvent, IAPTransactionEvent, IAPRestoreEvent];
 }
 
 /**
@@ -52,7 +52,7 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
 
     const IAPEmitter = new NativeEventEmitter(InAppUtils);
 
-    const subscription = IAPEmitter.addListener(IAPEmitter.IAPProductsEvent,
+    const subscription = IAPEmitter.addListener(InAppUtils.IAPProductsEvent,
         (response) => console.log(response.state, response) // response can contain error or products dependent on state
     );
     ...
