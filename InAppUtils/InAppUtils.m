@@ -7,13 +7,12 @@
 @implementation InAppUtils
 {
     NSArray *products;
-    NSMutableDictionary *_callbacks;
+    bool hasListeners;
 }
 
 - (instancetype)init
 {
     if ((self = [super init])) {
-        _callbacks = [[NSMutableDictionary alloc] init];
         [[SKPaymentQueue defaultQueue] addTransactionObserver:self];
     }
     return self;
@@ -26,50 +25,92 @@
 
 RCT_EXPORT_MODULE()
 
+NSString *const IAPProductsEvent = @"IAP-products";
+NSString *const IAPTransactionEvent = @"IAP-transaction";
+NSString *const IAPRestoreEvent = @"IAP-restore";
+
+- (NSDictionary *)constantsToExport
+{
+  return @{ 
+      @"IAPProductsEvent": IAPProductsEvent, 
+      @"IAPTransactionEvent": IAPTransactionEvent, 
+      @"IAPRestoreEvent": IAPRestoreEvent 
+  };
+}
+
+- (NSArray<NSString *> *)supportedEvents
+{
+  return @[IAPProductsEvent, IAPTransactionEvent, IAPTransactionEvent];
+}
+
+/**
+    GUIDE TO LISTENERS:
+    source: https://facebook.github.io/react-native/docs/native-modules-ios.html
+
+    import { NativeEventEmitter, NativeModules } from 'react-native';
+    const { InAppUtils } = NativeModules;
+
+    const IAPEmitter = new NativeEventEmitter(InAppUtils);
+
+    const subscription = IAPEmitter.addListener(IAPEmitter.IAPProductsEvent,
+        (response) => console.log(response.state, response) // response can contain error or products dependent on state
+    );
+    ...
+    // Don't forget to unsubscribe, typically in componentWillUnmount
+    subscription.remove();
+*/
+
+// Will be called when this module's first listener is added.
+-(void)startObserving {
+    hasListeners = YES;
+    // Set up any upstream listeners or background tasks as necessary
+}
+
+// Will be called when this module's last listener is removed, or on dealloc.
+-(void)stopObserving {
+    hasListeners = NO;
+    // Remove upstream listeners, stop unnecessary background tasks
+}
+
 - (void)paymentQueue:(SKPaymentQueue *)queue
  updatedTransactions:(NSArray *)transactions
 {
     for (SKPaymentTransaction *transaction in transactions) {
         switch (transaction.transactionState) {
-            case SKPaymentTransactionStateFailed: {
-                NSString *key = RCTKeyForInstance(transaction.payment.productIdentifier);
-                RCTResponseSenderBlock callback = _callbacks[key];
-                if (callback) {
+            case SKPaymentTransactionStateFailed: {   
+                if (hasListeners) { // Only send events if anyone is listening
                     switch (transaction.error.code)
                     {
                         case SKErrorPaymentCancelled:
-                            callback(@[@"user_cancelled"]);
+                            [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"canceled", @"transaction": transaction}];
                             break;
                         default:
-                            callback(@[RCTJSErrorFromNSError(transaction.error)]);
+                            [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": transaction, @"error": RCTJSErrorFromNSError(transaction.error)}];
                             break;
                     }
-                    [_callbacks removeObjectForKey:key];
                 } else {
-                    RCTLogWarn(@"No callback registered for transaction with state failed.");
+                    RCTLogWarn(@"No listener registered for transaction with state failed.");
                 }
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             }
             case SKPaymentTransactionStatePurchased: {
-                NSString *key = RCTKeyForInstance(transaction.payment.productIdentifier);
-                RCTResponseSenderBlock callback = _callbacks[key];
-                if (callback) {
+                if (hasListeners) { // Only send events if anyone is listening
                     NSDictionary *purchase = @{
                                               @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
                                               @"transactionIdentifier": transaction.transactionIdentifier,
                                               @"productIdentifier": transaction.payment.productIdentifier,
                                               @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0]
                                               };
-                    callback(@[[NSNull null], purchase]);
-                    [_callbacks removeObjectForKey:key];
+                    [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": transaction, @"purchase": purchase}];
                 } else {
-                    RCTLogWarn(@"No callback registered for transaction with state purchased.");
+                    RCTLogWarn(@"No listener registered for transaction with state purchased.");
                 }
+                // TODO remove finishTransaction here, and create separate method
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             }
-            case SKPaymentTransactionStateRestored:
+            case SKPaymentTransactionStateRestored: // TODO
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             case SKPaymentTransactionStatePurchasing:
@@ -84,22 +125,25 @@ RCT_EXPORT_MODULE()
     }
 }
 
-RCT_EXPORT_METHOD(purchaseProductForUser:(NSString *)productIdentifier
-                  username:(NSString *)username
-                  callback:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(finishTransaction:(NSString *)transactionIdentifier)
 {
-    [self doPurchaseProduct:productIdentifier username:username callback:callback];
+    // TODO fetch transaction from an array (is this waterproof?) to be finished here
+    // [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
 }
 
-RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
-                  callback:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(purchaseProductForUser:(NSString *)productIdentifier
+                  username:(NSString *)username)
 {
-    [self doPurchaseProduct:productIdentifier username:nil callback:callback];
+    [self doPurchaseProduct:productIdentifier username:username];
+}
+
+RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier)
+{
+    [self doPurchaseProduct:productIdentifier username:nil];
 }
 
 - (void) doPurchaseProduct:(NSString *)productIdentifier
                   username:(NSString *)username
-                  callback:(RCTResponseSenderBlock)callback
 {
     @try {
         SKProduct *product;
@@ -117,42 +161,35 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
                 payment.applicationUsername = username;
             }
             [[SKPaymentQueue defaultQueue] addPayment:payment];
-            _callbacks[RCTKeyForInstance(payment.productIdentifier)] = callback;
         } else {
-            callback(@[@"invalid_product"]);
+            NSLog(@"invalid_product"); // TODO we lose feedback here, how do we solve this? Send error event?
         }
     } @catch (NSException *exception) {
-        callback(@[@"purchase_product_exception"]);
+        NSLog(@"purchase_product_exception"); // TODO we lose feedback here, how do we solve this? Send error event?
     }
 }
 
 - (void)paymentQueue:(SKPaymentQueue *)queue
 restoreCompletedTransactionsFailedWithError:(NSError *)error
 {
-    NSString *key = RCTKeyForInstance(@"restoreRequest");
-    RCTResponseSenderBlock callback = _callbacks[key];
-    if (callback) {
+    if (hasListeners) { // Only send events if anyone is listening
         switch (error.code)
         {
             case SKErrorPaymentCancelled:
-                callback(@[@"user_cancelled"]);
+                [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"canceled", @"error": RCTJSErrorFromNSError(error)}];
                 break;
             default:
-                callback(@[@"restore_failed"]);
+                [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"error", @"error": RCTJSErrorFromNSError(error)}];
                 break;
         }
-        
-        [_callbacks removeObjectForKey:key];
     } else {
-        RCTLogWarn(@"No callback registered for restore product request.");
+        RCTLogWarn(@"No listener registered for restore product request.");
     }
 }
 
 - (void)paymentQueueRestoreCompletedTransactionsFinished:(SKPaymentQueue *)queue
 {
-    NSString *key = RCTKeyForInstance(@"restoreRequest");
-    RCTResponseSenderBlock callback = _callbacks[key];
-    if (callback) {
+    if (hasListeners) { // Only send events if anyone is listening
         NSMutableArray *productsArrayForJS = [NSMutableArray array];
         for(SKPaymentTransaction *transaction in queue.transactions){
             if(transaction.transactionState == SKPaymentTransactionStateRestored) {
@@ -171,42 +208,35 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
                 }
 
                 [productsArrayForJS addObject:purchase];
+                // TODO remove finishTransaction here, and create separate method
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
             }
         }
-        callback(@[[NSNull null], productsArrayForJS]);
-        [_callbacks removeObjectForKey:key];
+        [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"success", @"products": productsArrayForJS}];
     } else {
-        RCTLogWarn(@"No callback registered for restore product request.");
+        RCTLogWarn(@"No listener registered for restore product request.");
     }
 }
 
-RCT_EXPORT_METHOD(restorePurchases:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(restorePurchases)
 {
-    NSString *restoreRequest = @"restoreRequest";
-    _callbacks[RCTKeyForInstance(restoreRequest)] = callback;
     [[SKPaymentQueue defaultQueue] restoreCompletedTransactions];
 }
 
-RCT_EXPORT_METHOD(restorePurchasesForUser:(NSString *)username
-                    callback:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(restorePurchasesForUser:(NSString *)username)
 {
-    NSString *restoreRequest = @"restoreRequest";
-    _callbacks[RCTKeyForInstance(restoreRequest)] = callback;
     if(!username) {
-        callback(@[@"username_required"]);
+        NSLog(@[@"username_required"]); // TODO we lose feedback here, how do we solve this? Send error event?
         return;
     }
     [[SKPaymentQueue defaultQueue] restoreCompletedTransactionsWithApplicationUsername:username];
 }
 
-RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers
-                  callback:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers)
 {
     SKProductsRequest *productsRequest = [[SKProductsRequest alloc]
                                           initWithProductIdentifiers:[NSSet setWithArray:productIdentifiers]];
     productsRequest.delegate = self;
-    _callbacks[RCTKeyForInstance(productsRequest)] = callback;
     [productsRequest start];
 }
 
@@ -231,9 +261,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
 - (void)productsRequest:(SKProductsRequest *)request
      didReceiveResponse:(SKProductsResponse *)response
 {
-    NSString *key = RCTKeyForInstance(request);
-    RCTResponseSenderBlock callback = _callbacks[key];
-    if (callback) {
+    if (hasListeners) { // Only send events if anyone is listening
         products = [NSMutableArray arrayWithArray:response.products];
         NSMutableArray *productsArrayForJS = [NSMutableArray array];
         for(SKProduct *item in response.products) {
@@ -250,33 +278,20 @@ RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
                                       };
             [productsArrayForJS addObject:product];
         }
-        callback(@[[NSNull null], productsArrayForJS]);
-        [_callbacks removeObjectForKey:key];
+        [self sendEventWithName:IAPProductsEvent body:@{@"state": @"success", @"products": productsArrayForJS}];
     } else {
-        RCTLogWarn(@"No callback registered for load product request.");
+        RCTLogWarn(@"No listener registered for load product request.");
     }
 }
 
 // SKProductsRequestDelegate network error
 - (void)request:(SKRequest *)request didFailWithError:(NSError *)error{
-    NSString *key = RCTKeyForInstance(request);
-    RCTResponseSenderBlock callback = _callbacks[key];
-    if(callback) {
-        callback(@[RCTJSErrorFromNSError(error)]);
-        [_callbacks removeObjectForKey:key];
-    }
+    [self sendEventWithName:IAPProductsEvent body:@{@"state": @"error", @"error": RCTJSErrorFromNSError(error)}];
 }
 
 - (void)dealloc
 {
     [[SKPaymentQueue defaultQueue] removeTransactionObserver:self];
-}
-
-#pragma mark Private
-
-static NSString *RCTKeyForInstance(id instance)
-{
-    return [NSString stringWithFormat:@"%p", instance];
 }
 
 @end
