@@ -147,6 +147,7 @@ RCT_EXPORT_METHOD(finishTransaction:(NSString *)transactionIdentifier
         if ([transactionIdentifier isEqualToString:transaction.transactionIdentifier]) {
             [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
             resolve(@YES);
+            return;
         }
     }
     reject(@"not_found", [NSString stringWithFormat: @"Transaction %@ could not be found", transactionIdentifier], nil);
