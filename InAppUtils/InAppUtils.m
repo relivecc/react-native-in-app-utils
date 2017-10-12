@@ -284,21 +284,28 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
     [self sendEventWithName:IAPProductsEvent body:@{@"state": @"error", @"error": RCTJSErrorFromNSError(error)}];
 }
 
-- (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction{
-    NSDictionary *payment = @{
-        @"applicationUsername": transaction.payment.applicationUsername ? transaction.payment.applicationUsername : @"",
-        @"productIdentifier": transaction.payment.productIdentifier,
-        @"quantity": [NSNumber numberWithInt:transaction.payment.quantity],
-        @"requestData": transaction.payment.requestData ? transaction.payment.requestData : @""
-    };
+#pragma mark Private
 
+- (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction{
     NSMutableDictionary *purchase = [NSMutableDictionary dictionaryWithDictionary: @{
-        @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
-        @"transactionIdentifier": transaction.transactionIdentifier,
+        @"transactionDate": transaction.transactionDate ? @(transaction.transactionDate.timeIntervalSince1970 * 1000) : [NSNumber numberWithInt:0],
+        @"transactionIdentifier": transaction.transactionIdentifier ? transaction.transactionIdentifier : @"",
         @"productIdentifier": transaction.payment.productIdentifier,
-        @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0],
-        @"payment": payment,
     }];
+
+    if ([transaction transactionReceipt]) {
+        purchase[@"transactionReceipt"] = [[transaction transactionReceipt] base64EncodedStringWithOptions:0];
+    }
+
+    if (transaction.payment) {
+        NSDictionary *payment = @{
+            @"applicationUsername": transaction.payment.applicationUsername ? transaction.payment.applicationUsername : @"",
+            @"productIdentifier": transaction.payment.productIdentifier,
+            @"quantity": [NSNumber numberWithInt:transaction.payment.quantity],
+            @"requestData": transaction.payment.requestData ? transaction.payment.requestData : @""
+        };
+        purchase[@"payment"] = payment;
+    }
 
     SKProduct *product = [self getProduct:transaction.payment.productIdentifier];
     if (product) {
