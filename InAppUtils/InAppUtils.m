@@ -86,36 +86,30 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
                 switch (transaction.error.code)
                 {
                     case SKErrorPaymentCancelled:
-                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"cancelled", @"transaction": transaction}];
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"cancelled", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                         break;
                     default:
-                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": transaction, @"error": RCTJSErrorFromNSError(transaction.error)}];
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction], @"error": RCTJSErrorFromNSError(transaction.error)}];
                         break;
                 }
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             }
             case SKPaymentTransactionStatePurchased: {
-                NSDictionary *purchase = @{
-                                            @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
-                                            @"transactionIdentifier": transaction.transactionIdentifier,
-                                            @"productIdentifier": transaction.payment.productIdentifier,
-                                            @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0]
-                                            };
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": transaction, @"purchase": purchase}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                 // TODO remove finishTransaction here, and create separate method
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             }
             case SKPaymentTransactionStateRestored:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"restored", @"transaction": transaction}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"restored", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 break;
             case SKPaymentTransactionStatePurchasing:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"purchasing", @"transaction": transaction}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"purchasing", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                 break;
             case SKPaymentTransactionStateDeferred:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"deferred", @"transaction": transaction}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"deferred", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                 break;
             default:
                 break;
@@ -150,14 +144,7 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
                   rejecter:(RCTPromiseRejectBlock)reject
 {
     @try {
-        SKProduct *product;
-        for(SKProduct *p in products)
-        {
-            if([productIdentifier isEqualToString:p.productIdentifier]) {
-                product = p;
-                break;
-            }
-        }
+        SKProduct *product = [self getProduct:productIdentifier];
 
         if(product) {
             SKMutablePayment *payment = [SKMutablePayment paymentWithProduct:product];
@@ -165,12 +152,12 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
                 payment.applicationUsername = username;
             }
             [[SKPaymentQueue defaultQueue] addPayment:payment];
-            resolve(@[@YES]);
+            resolve(@YES);
         } else {
-            reject(@[@"invalid_product"]);
+            reject(@"invalid_product", nil, nil);
         }
     } @catch (NSException *exception) {
-        reject(@[@"purchase_product_exception"]);
+        reject(@"purchase_product_exception", exception.reason, exception);
     }
 }
 
@@ -198,21 +185,7 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
         NSMutableArray *productsArrayForJS = [NSMutableArray array];
         for(SKPaymentTransaction *transaction in queue.transactions){
             if(transaction.transactionState == SKPaymentTransactionStateRestored) {
-
-                NSMutableDictionary *purchase = [NSMutableDictionary dictionaryWithDictionary: @{
-                    @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
-                    @"transactionIdentifier": transaction.transactionIdentifier,
-                    @"productIdentifier": transaction.payment.productIdentifier,
-                    @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0]
-                }];
-
-                SKPaymentTransaction *originalTransaction = transaction.originalTransaction;
-                if (originalTransaction) {
-                    purchase[@"originalTransactionDate"] = @(originalTransaction.transactionDate.timeIntervalSince1970 * 1000);
-                    purchase[@"originalTransactionIdentifier"] = originalTransaction.transactionIdentifier;
-                }
-
-                [productsArrayForJS addObject:purchase];
+                [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction]];
                 // TODO remove finishTransaction here, and create separate method
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
             }
@@ -228,12 +201,12 @@ RCT_EXPORT_METHOD(restorePurchases:(RCTPromiseResolveBlock)resolve
 {
     if (!hasListeners) { // Only initiate restore if anyone is listening
         RCTLogWarn(@"No listener registered for restore purchases request.");
-        reject(@[@"No listener registered for restore purchases request."]);
+        reject(@"no_listener", @"No listener registered for restore purchases request.", nil);
         return;
     }
 
     [[SKPaymentQueue defaultQueue] restoreCompletedTransactions];
-    resolve(@[@YES]);
+    resolve(@YES);
 }
 
 RCT_EXPORT_METHOD(restorePurchasesForUser:(NSString *)username
@@ -242,16 +215,16 @@ RCT_EXPORT_METHOD(restorePurchasesForUser:(NSString *)username
 {
     if (!hasListeners) { // Only initiate restore if anyone is listening
         RCTLogWarn(@"No listener registered for restore purchases request.");
-        reject(@[@"No listener registered for restore purchases request."]);
+        reject(@"no_listener", @"No listener registered for restore purchases request.", nil);
         return;
     }
 
     if(!username) {
-        reject(@[@"username_required"]);
+        reject(@"username_required", nil, nil);
         return;
     }
     [[SKPaymentQueue defaultQueue] restoreCompletedTransactionsWithApplicationUsername:username];
-    resolve(@[@YES]);
+    resolve(@YES);
 }
 
 RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers
@@ -260,7 +233,7 @@ RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers
 {
     if (!hasListeners) { // Only load products if anyone is listening
         RCTLogWarn(@"No listener registered for load product request.");
-        reject(@[@"No listener registered for load product request."]);
+        reject(@"no_listener", @"No listener registered for load products request.", nil);
         return;
     }
 
@@ -268,13 +241,14 @@ RCT_EXPORT_METHOD(loadProducts:(NSArray *)productIdentifiers
                                         initWithProductIdentifiers:[NSSet setWithArray:productIdentifiers]];
     productsRequest.delegate = self;
     [productsRequest start];
-    resolve(@[@YES]);
+    resolve(@YES);
 }
 
-RCT_EXPORT_METHOD(canMakePayments:(RCTPromiseResolveBlock)resolve)
+RCT_EXPORT_METHOD(canMakePayments:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
     BOOL canMakePayments = [SKPaymentQueue canMakePayments];
-    resolve(@[@(canMakePayments)]);
+    resolve(@(canMakePayments));
 }
 
 RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
@@ -283,9 +257,9 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
     NSURL *receiptUrl = [[NSBundle mainBundle] appStoreReceiptURL];
     NSData *receiptData = [NSData dataWithContentsOfURL:receiptUrl];
     if (!receiptData) {
-      reject(@[@"not_available"]);
+      reject(@"not_available", nil, nil);
     } else {
-      resolve(@[receiptData base64EncodedStringWithOptions:0]);
+      resolve([receiptData base64EncodedStringWithOptions:0]);
     }
 }
 
@@ -297,18 +271,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
         products = [NSMutableArray arrayWithArray:response.products];
         NSMutableArray *productsArrayForJS = [NSMutableArray array];
         for(SKProduct *item in response.products) {
-            NSDictionary *product = @{
-                                      @"identifier": item.productIdentifier,
-                                      @"price": item.price,
-                                      @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
-                                      @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
-                                      @"priceString": item.priceString,
-                                      @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
-                                      @"downloadable": item.downloadable ? @"true" : @"false" ,
-                                      @"description": item.localizedDescription ? item.localizedDescription : @"",
-                                      @"title": item.localizedTitle ? item.localizedTitle : @"",
-                                      };
-            [productsArrayForJS addObject:product];
+            [productsArrayForJS addObject:[self RCTJSProductFromSKProduct:item]];
         }
         [self sendEventWithName:IAPProductsEvent body:@{@"state": @"success", @"products": productsArrayForJS}];
     } else {
@@ -319,6 +282,60 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 // SKProductsRequestDelegate network error
 - (void)request:(SKRequest *)request didFailWithError:(NSError *)error{
     [self sendEventWithName:IAPProductsEvent body:@{@"state": @"error", @"error": RCTJSErrorFromNSError(error)}];
+}
+
+- (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction{
+    NSDictionary *payment = @{
+        @"applicationUsername": transaction.payment.applicationUsername ? transaction.payment.applicationUsername : @"",
+        @"productIdentifier": transaction.payment.productIdentifier,
+        @"quantity": [NSNumber numberWithInt:transaction.payment.quantity],
+        @"requestData": transaction.payment.requestData ? transaction.payment.requestData : @""
+    };
+
+    NSMutableDictionary *purchase = [NSMutableDictionary dictionaryWithDictionary: @{
+        @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
+        @"transactionIdentifier": transaction.transactionIdentifier,
+        @"productIdentifier": transaction.payment.productIdentifier,
+        @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0],
+        @"payment": payment,
+    }];
+
+    SKProduct *product = [self getProduct:transaction.payment.productIdentifier];
+    if (product) {
+        purchase[@"product"] = [self RCTJSProductFromSKProduct:product];
+    }
+
+    SKPaymentTransaction *originalTransaction = transaction.originalTransaction;
+    if (originalTransaction) {
+        purchase[@"originalTransactionDate"] = @(originalTransaction.transactionDate.timeIntervalSince1970 * 1000);
+        purchase[@"originalTransactionIdentifier"] = originalTransaction.transactionIdentifier;
+    }
+
+    return purchase;
+}
+
+- (NSDictionary *)RCTJSProductFromSKProduct:(SKProduct *)item {
+    NSDictionary *product = @{
+        @"identifier": item.productIdentifier,
+        @"price": item.price,
+        @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
+        @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
+        @"priceString": item.priceString,
+        @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
+        @"downloadable": item.downloadable ? @"true" : @"false" ,
+        @"description": item.localizedDescription ? item.localizedDescription : @"",
+        @"title": item.localizedTitle ? item.localizedTitle : @"",
+    };
+    return product;
+}
+
+- (SKProduct *)getProduct:(NSString *)productIdentifier {
+    for(SKProduct *p in products) {
+        if([productIdentifier isEqualToString:p.productIdentifier]) {
+            return p;
+        }
+    }
+    return nil;
 }
 
 @end
