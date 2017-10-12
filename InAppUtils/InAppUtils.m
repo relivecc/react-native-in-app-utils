@@ -157,7 +157,7 @@ RCT_EXPORT_METHOD(purchaseProduct:(NSString *)productIdentifier
             reject(@"invalid_product", nil, nil);
         }
     } @catch (NSException *exception) {
-        reject(@"purchase_product_exception", exception.reason, exception);
+        reject(@"purchase_product_exception", exception.reason, nil);
     }
 }
 
