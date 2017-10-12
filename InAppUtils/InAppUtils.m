@@ -8,12 +8,14 @@
 {
     NSArray *products;
     bool hasListeners;
+    bool autoFinishTransactions;
 }
 
 - (instancetype)init
 {
     if ((self = [super init])) {
         hasListeners = NO;
+        autoFinishTransactions = YES;
     }
     return self;
 }
@@ -72,6 +74,11 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
     [[SKPaymentQueue defaultQueue] removeTransactionObserver:self];
 }
 
+RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
+{
+    autoFinishTransactions = autoFinish;
+}
+
 - (void)paymentQueue:(SKPaymentQueue *)queue
  updatedTransactions:(NSArray *)transactions
 {
@@ -92,18 +99,23 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
                         [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction], @"error": RCTJSErrorFromNSError(transaction.error)}];
                         break;
                 }
-                [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                if (autoFinishTransactions) {
+                    [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                }
                 break;
             }
             case SKPaymentTransactionStatePurchased: {
                 [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
-                // TODO remove finishTransaction here, and create separate method
-                [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                if (autoFinishTransactions) {
+                    [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                }
                 break;
             }
             case SKPaymentTransactionStateRestored:
                 [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"restored", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
-                [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                if (autoFinishTransactions) {
+                    [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                }
                 break;
             case SKPaymentTransactionStatePurchasing:
                 [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"purchasing", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
@@ -117,10 +129,27 @@ NSString *const IAPRestoreEvent = @"IAP-restore";
     }
 }
 
-RCT_EXPORT_METHOD(finishTransaction:(NSString *)transactionIdentifier)
+RCT_EXPORT_METHOD(getTransactionsQueue:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    // TODO fetch transaction from an array (is this waterproof?) to be finished here
-    // [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+    NSMutableArray *productsArrayForJS = [NSMutableArray array];
+    for (SKPaymentTransaction *transaction in [[SKPaymentQueue defaultQueue] transactions]) {
+        [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction]];
+    }
+    resolve(productsArrayForJS);
+}
+
+RCT_EXPORT_METHOD(finishTransaction:(NSString *)transactionIdentifier
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    for (SKPaymentTransaction *transaction in [[SKPaymentQueue defaultQueue] transactions]) {
+        if ([transactionIdentifier isEqualToString:transaction.transactionIdentifier]) {
+            [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+            resolve(@YES);
+        }
+    }
+    reject(@"not_found", [NSString stringWithFormat: @"Transaction %@ could not be found", transactionIdentifier], nil);
 }
 
 RCT_EXPORT_METHOD(purchaseProductForUser:(NSString *)productIdentifier
@@ -186,8 +215,9 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
         for(SKPaymentTransaction *transaction in queue.transactions){
             if(transaction.transactionState == SKPaymentTransactionStateRestored) {
                 [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction]];
-                // TODO remove finishTransaction here, and create separate method
-                [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                if (autoFinishTransactions) {
+                    [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+                }
             }
         }
         [self sendEventWithName:IAPRestoreEvent body:@{@"state": @"success", @"products": productsArrayForJS}];
