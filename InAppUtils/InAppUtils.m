@@ -96,7 +96,7 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
                         [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"cancelled", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                         break;
                     default:
-                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"error", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction], @"error": RCTJSErrorFromNSError(transaction.error)}];
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction], @"error": RCTJSErrorFromNSError(transaction.error)}];
                         break;
                 }
                 if (autoFinishTransactions) {
@@ -104,24 +104,17 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
                 }
                 break;
             }
-            case SKPaymentTransactionStatePurchased: {
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"success", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
+            case SKPaymentTransactionStatePurchased: 
+            case SKPaymentTransactionStateRestored: {
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                 if (autoFinishTransactions) {
                     [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 }
                 break;
             }
-            case SKPaymentTransactionStateRestored:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"restored", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
-                if (autoFinishTransactions) {
-                    [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
-                }
-                break;
             case SKPaymentTransactionStatePurchasing:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"purchasing", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
-                break;
             case SKPaymentTransactionStateDeferred:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"deferred", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
                 break;
             default:
                 break;
@@ -317,8 +310,26 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 
 #pragma mark Private
 
+- (NSString *)RCTJSStringFromTransactionState:(SKPaymentTransactionState)state {
+    switch (state) {
+        case SKPaymentTransactionStateFailed:
+            return @"error";
+        case SKPaymentTransactionStatePurchased:
+            return @"success";
+        case SKPaymentTransactionStateRestored:
+            return @"restored";
+        case SKPaymentTransactionStatePurchasing:
+            return @"purchasing";
+        case SKPaymentTransactionStateDeferred:
+            return @"deferred";
+        default:
+            break;
+    }
+}
+
 - (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction{
     NSMutableDictionary *purchase = [NSMutableDictionary dictionaryWithDictionary: @{
+        @"transactionState": transaction.transactionState ? [self RCTJSStringFromTransactionState:transaction.transactionState] : @"UNKNOWN",
         @"transactionDate": transaction.transactionDate ? @(transaction.transactionDate.timeIntervalSince1970 * 1000) : [NSNumber numberWithInt:0],
         @"transactionIdentifier": transaction.transactionIdentifier ? transaction.transactionIdentifier : @"",
         @"productIdentifier": transaction.payment.productIdentifier,
