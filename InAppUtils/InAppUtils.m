@@ -86,6 +86,8 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
         RCTLogWarn(@"No listener registered for updated transactions.");
         return;
     }
+
+    NSData *appReceipt = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] appStoreReceiptURL]];
                 
     for (SKPaymentTransaction *transaction in transactions) {
         switch (transaction.transactionState) {
@@ -93,10 +95,10 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
                 switch (transaction.error.code)
                 {
                     case SKErrorPaymentCancelled:
-                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"cancelled", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": @"cancelled", @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction withAppReceipt:appReceipt]}];
                         break;
                     default:
-                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction], @"error": RCTJSErrorFromNSError(transaction.error)}];
+                        [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction withAppReceipt:appReceipt], @"error": RCTJSErrorFromNSError(transaction.error)}];
                         break;
                 }
                 if (autoFinishTransactions) {
@@ -106,7 +108,7 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
             }
             case SKPaymentTransactionStatePurchased: 
             case SKPaymentTransactionStateRestored: {
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction withAppReceipt:appReceipt]}];
                 if (autoFinishTransactions) {
                     [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 }
@@ -114,7 +116,7 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
             }
             case SKPaymentTransactionStatePurchasing:
             case SKPaymentTransactionStateDeferred:
-                [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction]}];
+                [self sendEventWithName:IAPTransactionEvent body:@{@"state": [self RCTJSStringFromTransactionState:transaction.transactionState], @"transaction": [self RCTJSTransactionFromSKPaymentTransaction:transaction withAppReceipt:appReceipt]}];
                 break;
             default:
                 break;
@@ -125,9 +127,11 @@ RCT_EXPORT_METHOD(setAutoFinishTransactions:(BOOL)autoFinish)
 RCT_EXPORT_METHOD(getTransactionsQueue:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
+    NSData *appReceipt = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] appStoreReceiptURL]];
+    
     NSMutableArray *productsArrayForJS = [NSMutableArray array];
     for (SKPaymentTransaction *transaction in [[SKPaymentQueue defaultQueue] transactions]) {
-        [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction]];
+        [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction withAppReceipt:appReceipt]];
     }
     resolve(productsArrayForJS);
 }
@@ -205,10 +209,12 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
 - (void)paymentQueueRestoreCompletedTransactionsFinished:(SKPaymentQueue *)queue
 {
     if (hasListeners) { // Only send events if anyone is listening
+        NSData *appReceipt = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] appStoreReceiptURL]];
+                
         NSMutableArray *productsArrayForJS = [NSMutableArray array];
         for(SKPaymentTransaction *transaction in queue.transactions){
             if(transaction.transactionState == SKPaymentTransactionStateRestored) {
-                [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction]];
+                [productsArrayForJS addObject:[self RCTJSTransactionFromSKPaymentTransaction:transaction withAppReceipt:appReceipt]];
                 if (autoFinishTransactions) {
                     [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
                 }
@@ -327,7 +333,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
     }
 }
 
-- (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction{
+- (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction withAppReceipt:(NSData *)appReceipt {
     NSMutableDictionary *purchase = [NSMutableDictionary dictionaryWithDictionary: @{
         @"transactionState": transaction.transactionState ? [self RCTJSStringFromTransactionState:transaction.transactionState] : @"UNKNOWN",
         @"transactionDate": transaction.transactionDate ? @(transaction.transactionDate.timeIntervalSince1970 * 1000) : [NSNumber numberWithInt:0],
@@ -337,6 +343,11 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 
     if ([transaction transactionReceipt]) {
         purchase[@"transactionReceipt"] = [[transaction transactionReceipt] base64EncodedStringWithOptions:0];
+    }
+
+    // transactionReceipt is deprecated since iOS 7
+    if (appReceipt) {
+        purchase[@"appReceipt"] = [appReceipt base64EncodedStringWithOptions:0];
     }
 
     if (transaction.payment) {
