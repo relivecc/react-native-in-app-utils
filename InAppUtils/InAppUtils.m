@@ -3,6 +3,7 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 #import "SKProduct+StringPrice.h"
+#import "SKProductDiscount+StringPrice.h"
 
 @implementation InAppUtils
 {
@@ -382,9 +383,23 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
         @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
         @"priceString": item.priceString,
         @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
-        @"downloadable": item.downloadable ? @"true" : @"false" ,
+        @"downloadable": item.downloadable ? @"true" : @"false",
         @"description": item.localizedDescription ? item.localizedDescription : @"",
         @"title": item.localizedTitle ? item.localizedTitle : @"",
+        @"introductoryPrice": item.introductoryPrice ? [self RCTJSIntroductoryPriceFromSKProductDiscount:item.introductoryPrice] : @"false",
+    };
+    return product;
+}
+
+- (NSDictionary *)RCTJSIntroductoryPriceFromSKProductDiscount:(SKProductDiscount *)item {
+    NSDictionary *product = @{
+        @"price": item.price,
+        @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
+        @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
+        @"priceString": item.priceString,
+        // TODO paymentMode
+        // TODO subscriptionPeriod
+        // TODO numberOfPeriods
     };
     return product;
 }
