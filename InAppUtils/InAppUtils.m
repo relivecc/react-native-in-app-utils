@@ -376,7 +376,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 }
 
 - (NSDictionary *)RCTJSProductFromSKProduct:(SKProduct *)item {
-    NSDictionary *product = @{
+    NSMutableDictionary *product = [NSMutableDictionary dictionaryWithDictionary: @{
         @"identifier": item.productIdentifier,
         @"price": item.price,
         @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
@@ -386,12 +386,18 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
         @"downloadable": item.downloadable ? @"true" : @"false",
         @"description": item.localizedDescription ? item.localizedDescription : @"",
         @"title": item.localizedTitle ? item.localizedTitle : @"",
-        @"introductoryPrice": item.introductoryPrice ? [self RCTJSIntroductoryPriceFromSKProductDiscount:item.introductoryPrice] : @"false",
-    };
+    }];
+    
+    if (@available(iOS 11.2, *)) {
+        if (item.introductoryPrice) {
+            product[@"introductoryPrice"] = [self RCTJSIntroductoryPriceFromSKProductDiscount:item.introductoryPrice];
+        }
+    }
+    
     return product;
 }
 
-- (NSDictionary *)RCTJSIntroductoryPriceFromSKProductDiscount:(SKProductDiscount *)item {
+- (NSDictionary *)RCTJSIntroductoryPriceFromSKProductDiscount:(SKProductDiscount *)item  API_AVAILABLE(ios(11.2)){
     NSDictionary *product = @{
         @"price": item.price,
         @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
