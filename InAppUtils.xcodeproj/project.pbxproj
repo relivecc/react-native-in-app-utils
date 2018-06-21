@@ -11,6 +11,7 @@
 		46E694381B289730000B634E /* InAppUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = 46E694371B289730000B634E /* InAppUtils.m */; };
 		46E6943E1B289730000B634E /* libInAppUtils.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 46E694321B289730000B634E /* libInAppUtils.a */; };
 		46E694841B28E42F000B634E /* SKProduct+StringPrice.m in Sources */ = {isa = PBXBuildFile; fileRef = 46E694831B28E42F000B634E /* SKProduct+StringPrice.m */; };
+		CEF06D8520DB9A6E00A35D33 /* SKProductDiscount+StringPrice.m in Sources */ = {isa = PBXBuildFile; fileRef = CEF06D8420DB9A6E00A35D33 /* SKProductDiscount+StringPrice.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +45,8 @@
 		46E694431B289730000B634E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		46E694821B28E404000B634E /* SKProduct+StringPrice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SKProduct+StringPrice.h"; sourceTree = "<group>"; };
 		46E694831B28E42F000B634E /* SKProduct+StringPrice.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "SKProduct+StringPrice.m"; sourceTree = "<group>"; };
+		CEF06D8320DB9A6E00A35D33 /* SKProductDiscount+StringPrice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "SKProductDiscount+StringPrice.h"; sourceTree = "<group>"; };
+		CEF06D8420DB9A6E00A35D33 /* SKProductDiscount+StringPrice.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "SKProductDiscount+StringPrice.m"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +89,8 @@
 		46E694341B289730000B634E /* InAppUtils */ = {
 			isa = PBXGroup;
 			children = (
+				CEF06D8320DB9A6E00A35D33 /* SKProductDiscount+StringPrice.h */,
+				CEF06D8420DB9A6E00A35D33 /* SKProductDiscount+StringPrice.m */,
 				46E694351B289730000B634E /* InAppUtils.h */,
 				46E694371B289730000B634E /* InAppUtils.m */,
 				46E694821B28E404000B634E /* SKProduct+StringPrice.h */,
@@ -198,6 +203,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CEF06D8520DB9A6E00A35D33 /* SKProductDiscount+StringPrice.m in Sources */,
 				46E694841B28E42F000B634E /* SKProduct+StringPrice.m in Sources */,
 				46E694381B289730000B634E /* InAppUtils.m in Sources */,
 			);
