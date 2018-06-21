@@ -3,7 +3,6 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 #import "SKProduct+StringPrice.h"
-#import "SKProductDiscount+StringPrice.h"
 
 @implementation InAppUtils
 {
