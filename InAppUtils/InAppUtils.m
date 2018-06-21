@@ -390,23 +390,10 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
     
     if (@available(iOS 11.2, *)) {
         if (item.introductoryPrice) {
-            product[@"introductoryPrice"] = [self RCTJSIntroductoryPriceFromSKProductDiscount:item.introductoryPrice];
+            product[@"introductoryPrice"] = @"true";
         }
     }
     
-    return product;
-}
-
-- (NSDictionary *)RCTJSIntroductoryPriceFromSKProductDiscount:(SKProductDiscount *)item  API_AVAILABLE(ios(11.2)){
-    NSDictionary *product = @{
-        @"price": item.price,
-        @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
-        @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
-        @"priceString": item.priceString,
-        // TODO paymentMode
-        // TODO subscriptionPeriod
-        // TODO numberOfPeriods
-    };
     return product;
 }
 
