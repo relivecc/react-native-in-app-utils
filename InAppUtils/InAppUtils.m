@@ -389,7 +389,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
     
     if (@available(iOS 11.2, *)) {
         if (item.introductoryPrice) {
-            product[@"introductoryPrice"] = @"true";
+            product[@"introductoryPrice"] = @"available"; // TODO serialize introductoryPrice object
         }
     }
     
