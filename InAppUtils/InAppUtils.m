@@ -375,17 +375,24 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 }
 
 - (NSDictionary *)RCTJSProductFromSKProduct:(SKProduct *)item {
-    NSDictionary *product = @{
+    NSMutableDictionary *product = [NSMutableDictionary dictionaryWithDictionary: @{
         @"identifier": item.productIdentifier,
         @"price": item.price,
         @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
         @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
         @"priceString": item.priceString,
         @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
-        @"downloadable": item.downloadable ? @"true" : @"false" ,
+        @"downloadable": item.downloadable ? @"true" : @"false",
         @"description": item.localizedDescription ? item.localizedDescription : @"",
         @"title": item.localizedTitle ? item.localizedTitle : @"",
-    };
+    }];
+    
+    if (@available(iOS 11.2, *)) {
+        if (item.introductoryPrice) {
+            product[@"introductoryPrice"] = @"available"; // TODO serialize introductoryPrice object
+        }
+    }
+    
     return product;
 }
 
