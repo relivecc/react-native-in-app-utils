@@ -335,7 +335,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 
 - (NSDictionary *)RCTJSTransactionFromSKPaymentTransaction:(SKPaymentTransaction *)transaction withAppReceipt:(NSData *)appReceipt {
     NSMutableDictionary *purchase = [NSMutableDictionary dictionaryWithDictionary: @{
-        @"transactionState": transaction.transactionState ? [self RCTJSStringFromTransactionState:transaction.transactionState] : @"UNKNOWN",
+        @"transactionState": [self RCTJSStringFromTransactionState:transaction.transactionState],
         @"transactionDate": transaction.transactionDate ? @(transaction.transactionDate.timeIntervalSince1970 * 1000) : [NSNumber numberWithInt:0],
         @"transactionIdentifier": transaction.transactionIdentifier ? transaction.transactionIdentifier : @"",
         @"productIdentifier": transaction.payment.productIdentifier,
