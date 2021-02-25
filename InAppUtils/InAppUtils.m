@@ -3,6 +3,7 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 #import "SKProduct+StringPrice.h"
+#import "SKProductDiscount+StringPrice.h"
 
 @implementation InAppUtils
 {
@@ -375,6 +376,12 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
 }
 
 - (NSDictionary *)RCTJSProductFromSKProduct:(SKProduct *)item {
+  NSDictionary *introductoryPrice;
+  
+    if (@available(iOS 11.2, *)) {
+      introductoryPrice = [self RCTJSSKProductDiscount: item.introductoryPrice];
+    }
+  
     NSMutableDictionary *product = [NSMutableDictionary dictionaryWithDictionary: @{
         @"identifier": item.productIdentifier,
         @"price": item.price,
@@ -385,15 +392,95 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
         @"downloadable": item.isDownloadable ? @"true" : @"false",
         @"description": item.localizedDescription ? item.localizedDescription : @"",
         @"title": item.localizedTitle ? item.localizedTitle : @"",
+        @"introductoryPrice": introductoryPrice ? introductoryPrice : [NSNull null]
     }];
     
-    if (@available(iOS 11.2, *)) {
-        if (item.introductoryPrice) {
-            product[@"introductoryPrice"] = @"available"; // TODO serialize introductoryPrice object
-        }
-    }
-    
     return product;
+}
+
+- (NSDictionary *)RCTJSSKProductDiscount:(SKProductDiscount *)item API_AVAILABLE(ios(11.2)){
+  if (item == nil) {
+    return nil;
+  }
+  
+  NSString *discountType;
+  if (@available(iOS 12.2, *)) {
+    switch (item.type) {
+      case SKProductDiscountTypeIntroductory:
+        discountType = @"introductory";
+        break;
+      case SKProductDiscountTypeSubscription:
+        discountType = @"subscription";
+        break;
+      default:
+        discountType = nil;
+        break;
+    }
+  }
+  
+  NSString *paymentMode;
+  switch (item.paymentMode) {
+      case SKProductDiscountPaymentModeFreeTrial:
+          paymentMode = @"freeTrial";
+          break;
+      case SKProductDiscountPaymentModePayAsYouGo:
+          paymentMode = @"payAsYouGo";
+          break;
+      case SKProductDiscountPaymentModePayUpFront:
+          paymentMode = @"payUpFront";
+          break;
+      default:
+          paymentMode = nil;
+          break;
+  }
+
+  NSString *subscriptionPeriodUnit;
+   switch (item.subscriptionPeriod.unit) {
+       case SKProductPeriodUnitDay:
+           subscriptionPeriodUnit = @"day";
+           break;
+       case SKProductPeriodUnitWeek:
+           subscriptionPeriodUnit = @"week";
+           break;
+       case SKProductPeriodUnitMonth:
+           subscriptionPeriodUnit = @"month";
+           break;
+       case SKProductPeriodUnitYear:
+           subscriptionPeriodUnit = @"year";
+           break;
+       default:
+           subscriptionPeriodUnit = nil;
+           break;
+   }
+ 
+  NSDictionary *subscriptionPeriod;
+  
+  if (subscriptionPeriodUnit != nil) {
+    subscriptionPeriod = @{
+      @"unit": subscriptionPeriodUnit,
+      @"numberOfUnits": [[NSNumber alloc] initWithLong:item.subscriptionPeriod.numberOfUnits],
+      };
+  }
+  
+  NSString *identifier;
+  if (@available(iOS 12.2, *)) {
+    identifier = item.identifier;
+  }
+  
+  NSDictionary *discountDictionary = @{
+                                       @"identifier": identifier ? identifier : [NSNull null], // Identifier for discount
+                                       @"type": discountType ? discountType : [NSNull null], // Type of discount -> Introductory or Subscription discount
+                                       @"price": item.price, // Discount price in local currency
+                                       @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
+                                       @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
+                                       @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
+                                       @"priceString": item.priceString, // Price in string format.
+                                       @"numberOfPeriods": [[NSNumber alloc] initWithLong:item.numberOfPeriods], // Number of periods product discount is available.
+                                       @"paymentMode": paymentMode ? paymentMode : [NSNull null], // Paymentmode: freeTrial, payAsYouGo, payUpFront
+                                       @"subscriptionPeriod": subscriptionPeriod ? subscriptionPeriod : [NSNull null],  // { unit: year, numberOfUnits: 2 } -> 2 years.
+                                       };
+  
+  return discountDictionary;
 }
 
 - (SKProduct *)getProduct:(NSString *)productIdentifier {
