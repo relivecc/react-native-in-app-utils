@@ -467,17 +467,28 @@ RCT_EXPORT_METHOD(receiptData:(RCTPromiseResolveBlock)resolve
     identifier = item.identifier;
   }
   
+  NSLocale *priceLocale = item.priceLocale;
+  NSString *currencySymbol;
+  NSString *currencyCode;
+  NSString *countryCode;
+  
+  if (priceLocale != nil) {
+    currencySymbol = [priceLocale objectForKey:NSLocaleCurrencySymbol];
+    currencyCode = [priceLocale objectForKey:NSLocaleCurrencyCode];
+    countryCode = [priceLocale objectForKey: NSLocaleCountryCode];
+  }
+  
   NSDictionary *discountDictionary = @{
-                                       @"identifier": identifier ? identifier : [NSNull null], // Identifier for discount
-                                       @"type": discountType ? discountType : [NSNull null], // Type of discount -> Introductory or Subscription discount
-                                       @"price": item.price, // Discount price in local currency
-                                       @"currencySymbol": [item.priceLocale objectForKey:NSLocaleCurrencySymbol],
-                                       @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
-                                       @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
-                                       @"priceString": item.priceString, // Price in string format.
+                                       @"identifier": identifier != nil ? identifier : [NSNull null], // Identifier for discount
+                                       @"type": discountType != nil ? discountType : [NSNull null], // Type of discount -> Introductory or Subscription discount
+                                       @"price": item.price != nil ? item.price : [NSNull null], // Discount price in local currency
+                                       @"currencySymbol": currencySymbol != nil ? currencySymbol : [NSNull null],
+                                       @"currencyCode": currencyCode != nil ? currencyCode : [NSNull null],
+                                       @"countryCode": countryCode != nil ? countryCode : [NSNull null],
+                                       @"priceString": item.priceString != nil ? item.priceString : [NSNull null], // Price in string format.
                                        @"numberOfPeriods": [[NSNumber alloc] initWithLong:item.numberOfPeriods], // Number of periods product discount is available.
-                                       @"paymentMode": paymentMode ? paymentMode : [NSNull null], // Paymentmode: freeTrial, payAsYouGo, payUpFront
-                                       @"subscriptionPeriod": subscriptionPeriod ? subscriptionPeriod : [NSNull null],  // { unit: year, numberOfUnits: 2 } -> 2 years.
+                                       @"paymentMode": paymentMode != nil ? paymentMode : [NSNull null], // Paymentmode: freeTrial, payAsYouGo, payUpFront
+                                       @"subscriptionPeriod": subscriptionPeriod != nil ? subscriptionPeriod : [NSNull null],  // { unit: year, numberOfUnits: 2 } -> 2 years.
                                        };
   
   return discountDictionary;
